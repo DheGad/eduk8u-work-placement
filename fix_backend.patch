@@ -1,0 +1,60 @@
+--- backend/src/server_sqlite.ts	2026-06-04 16:21:26.000000000 +0530
++++ backend/src/server_sqlite.ts	2026-06-04 16:25:00.000000000 +0530
+@@ -151,7 +151,7 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ // DASHBOARD STATS
+ // ─────────────────────────────────────────────────────────────────────────────
+-app.get('/api/v1/dashboard/stats', authMiddleware, (_req, res) => {
++app.get('/api/v1/admin/dashboard/stats', authMiddleware, (_req, res) => {
+   const db = getDb();
+   const stats = {
+     total_placements: (db.prepare('SELECT COUNT(*) as c FROM placements WHERE tenant_id=?').get(TENANT_ID) as any).c,
+@@ -169,6 +169,72 @@
+   return ok(res, stats);
+ });
+ 
++app.get('/api/v1/admin/dashboard/recent-activity', authMiddleware, (req, res) => {
++  const db = getDb();
++  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
++  const logs = db.prepare(`SELECT al.*, u.first_name||' '||u.last_name as user_name FROM activity_logs al LEFT JOIN users u ON al.user_id=u.id WHERE al.tenant_id=? ORDER BY al.created_at DESC LIMIT ?`).all(TENANT_ID, limit);
++  return ok(res, logs);
++});
++
++app.get('/api/v1/admin/dashboard/at-risk', authMiddleware, (_req, res) => {
++  const db = getDb();
++  const placements = db.prepare(`
++    SELECT p.id, p.placement_ref as placement_number, st.first_name||' '||st.last_name as student_name, hf.facility_name as host_name, p.risk_level, p.compliance_score, p.hours_completed, 120 as hours_required 
++    FROM placements p 
++    LEFT JOIN students st ON p.student_id=st.id 
++    LEFT JOIN host_facilities hf ON p.host_facility_id=hf.id 
++    WHERE p.tenant_id=? AND p.risk_level IN ('high', 'critical')
++  `).all(TENANT_ID);
++  return ok(res, placements);
++});
++
++app.get('/api/v1/admin/dashboard/weekly-hours', authMiddleware, (_req, res) => {
++  // Simplified real data: just sum hours per day for the last 7 days
++  const db = getDb();
++  const data = db.prepare(`
++    SELECT log_date as day, SUM(hours_claimed) as this_week, 0 as last_month 
++    FROM placement_hours 
++    WHERE tenant_id=? AND status='approved' 
++    GROUP BY log_date 
++    ORDER BY log_date DESC LIMIT 7
++  `).all(TENANT_ID);
++  return ok(res, data.reverse());
++});
++
++app.get('/api/v1/admin/dashboard/compliance-distribution', authMiddleware, (_req, res) => {
++  const db = getDb();
++  const data = [
++    { range: 'High', label: 'High (>80%)', count: (db.prepare('SELECT COUNT(*) as c FROM placements WHERE tenant_id=? AND compliance_score >= 80').get(TENANT_ID) as any).c, color: '#10b981' },
++    { range: 'Medium', label: 'Medium (60-79%)', count: (db.prepare('SELECT COUNT(*) as c FROM placements WHERE tenant_id=? AND compliance_score >= 60 AND compliance_score < 80').get(TENANT_ID) as any).c, color: '#f59e0b' },
++    { range: 'Low', label: 'Low (<60%)', count: (db.prepare('SELECT COUNT(*) as c FROM placements WHERE tenant_id=? AND compliance_score < 60').get(TENANT_ID) as any).c, color: '#ef4444' }
++  ];
++  return ok(res, data);
++});
++
+ // ─────────────────────────────────────────────────────────────────────────────
+ // STUDENTS
+ // ─────────────────────────────────────────────────────────────────────────────

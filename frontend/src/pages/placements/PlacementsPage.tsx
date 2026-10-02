@@ -22,7 +22,7 @@ const phaseConfig: Record<string, { cls: string }> = {
   completed: { cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
 };
 
-import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { createPlacement } from '@/api/endpoints/placements';
 import { listStudents } from '@/api/endpoints/students';
 import { listHosts } from '@/api/endpoints/hosts';

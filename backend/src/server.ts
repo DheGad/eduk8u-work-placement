@@ -484,6 +484,54 @@ app.get('/api/v1/students', authMiddleware, async (req, res) => {
   return ok(res, students, { total: students.length });
 });
 
+import { parse } from 'csv-parse/sync';
+app.post('/api/v1/import/students', authMiddleware, requireRole(['super_admin', 'college_admin']), upload.single('file'), async (req, res) => {
+  if (!req.file) return err(res, 400, 'No file uploaded');
+  
+  let records: any[];
+  try {
+    records = parse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true });
+  } catch (e: any) {
+    return err(res, 400, `CSV Parsing Error: ${e.message}`);
+  }
+
+  let rows_processed = 0;
+  let rows_imported = 0;
+  let rows_skipped = 0;
+  let rows_failed = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < records.length; i++) {
+    rows_processed++;
+    const row = records[i];
+    const rowNum = i + 2; // +1 for 0-index, +1 for header
+    
+    if (!row.first_name || !row.last_name || !row.email) {
+      rows_failed++;
+      errors.push(`Row ${rowNum}: Missing required fields (first_name, last_name, email)`);
+      continue;
+    }
+
+    try {
+      const existing = (await db.query('SELECT id FROM students WHERE email=$1 AND tenant_id=$2', [row.email, (req as any).user.tenantId])).rows[0];
+      if (existing) {
+        rows_skipped++;
+        errors.push(`Row ${rowNum}: Student with this email already exists`);
+        continue;
+      }
+      await db.query(
+        'INSERT INTO students (id, tenant_id, first_name, last_name, email, phone, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [uuidv4(), (req as any).user.tenantId, row.first_name, row.last_name, row.email, row.phone || null, true]
+      );
+      rows_imported++;
+    } catch (e: any) {
+      rows_failed++;
+      errors.push(`Row ${rowNum}: ${e.message}`);
+    }
+  }
+  return res.json({ successCount: rows_imported, errorCount: rows_failed + rows_skipped, errors });
+});
+
 app.post('/api/v1/students', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   const { first_name, last_name, email, phone, dob, address, emergency_contact_name, emergency_contact_phone, course_code } = req.body;
   if (!first_name || !last_name || !email) return err(res, 400, 'first_name, last_name, email required');

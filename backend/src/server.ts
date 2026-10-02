@@ -350,7 +350,7 @@ app.get('/api/v1/auth/me', authMiddleware, async (req, res) => {
 app.get('/api/v1/admin/dashboard/stats', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   try {
     const tid = (req as any).user.tenantId;
-    const [pl, ac, co, st, ho, su, sv, ar, ph, ef, hco, nr, md] = await Promise.all([
+    const [pl, ac, co, st, ho, su, sv, ar, ph, ef, hco, nr, md, comp] = await Promise.all([
       db.query('SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1', [tid]),
       db.query("SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1 AND status='active'", [tid]),
       db.query("SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1 AND status='completed'", [tid]),
@@ -364,6 +364,7 @@ app.get('/api/v1/admin/dashboard/stats', authMiddleware, requireRole(['super_adm
       db.query('SELECT COALESCE(SUM(hours_completed),0) as total FROM placements WHERE tenant_id=$1', [tid]),
       db.query("SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1 AND status='active' AND hours_completed >= 100", [tid]),
       db.query("SELECT COUNT(*) as c FROM placements p WHERE p.tenant_id=$1 AND p.status='active' AND (SELECT COUNT(*) FROM placement_evidence WHERE placement_id=p.id) < 3", [tid]),
+      db.query('SELECT COALESCE(AVG(compliance_score),0) as avg FROM placements WHERE tenant_id=$1', [tid]),
     ]);
     const stats = {
       total_placements: parseInt((pl.rows[0] as any).c) || 0,
@@ -379,6 +380,7 @@ app.get('/api/v1/admin/dashboard/stats', authMiddleware, requireRole(['super_adm
       total_hours_logged: parseFloat((hco.rows[0] as any).total) || 0,
       near_completion: parseInt((nr.rows[0] as any).c) || 0,
       missing_documents: parseInt((md.rows[0] as any).c) || 0,
+      avg_compliance: parseFloat((comp.rows[0] as any).avg) || 0,
     };
     return ok(res, stats);
   } catch (e: any) {
@@ -429,7 +431,7 @@ app.get('/api/v1/admin/dashboard/audit-readiness', authMiddleware, requireRole([
   const activePlacements = (await db.query("SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1 AND status='active'", [(req as any).user.tenantId])).rows[0] as any;
   const readyPlacements = (await db.query("SELECT COUNT(*) as c FROM placements WHERE tenant_id=$1 AND status='active' AND compliance_score >= 80", [(req as any).user.tenantId])).rows[0] as any;
   
-  const score = activePlacements.c > 0 ? Math.round((readyPlacements.c / activePlacements.c) * 100) : 100;
+  const score = activePlacements.c > 0 ? Math.round((readyPlacements.c / activePlacements.c) * 100) : 0;
   
   return ok(res, { score, ready_count: readyPlacements.c, total_active: activePlacements.c });
 });

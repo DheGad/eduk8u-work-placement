@@ -18,7 +18,32 @@ const briefingConfig: Record<string, { cls: string; label: string }> = {
   not_started: { cls: 'bg-[#111111] text-[#A1A1AA] border-[#222222]', label: 'Not Started' },
 };
 
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { createSupervisor } from '@/api/endpoints/supervisors';
+import { listHosts } from '@/api/endpoints/hosts';
+
 const CreateSupervisorModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', position_title: '', years_experience: '', host_facility_id: '' });
+  const queryClient = useQueryClient();
+  
+  const { data: hostsData } = useQuery({
+    queryKey: ['hosts', { search: '' }],
+    queryFn: () => listHosts({ search: '' })
+  });
+  const hosts = Array.isArray(hostsData) ? hostsData : (hostsData?.data || []);
+
+  const mutation = useMutation({
+    mutationFn: () => createSupervisor(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supervisors'] });
+      setForm({ first_name: '', last_name: '', email: '', phone: '', position_title: '', years_experience: '', host_facility_id: '' });
+      onClose();
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.error || 'Failed to add supervisor');
+    }
+  });
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -34,25 +59,28 @@ const CreateSupervisorModal = ({ open, onClose }: { open: boolean; onClose: () =
               { key: 'last_name', label: 'Last Name *', type: 'text', placeholder: 'e.g. Whitfield' },
               { key: 'email', label: 'Work Email *', type: 'email', placeholder: 'supervisor@facility.org.au' },
               { key: 'phone', label: 'Work Phone *', type: 'tel', placeholder: '07 XXXX XXXX' },
-              { key: 'position', label: 'Position Title *', type: 'text', placeholder: 'e.g. Registered Nurse' },
+              { key: 'position_title', label: 'Position Title *', type: 'text', placeholder: 'e.g. Registered Nurse' },
               { key: 'years_experience', label: 'Years Experience', type: 'number', placeholder: '5' },
             ].map(f => (
               <div key={f.key} className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-medium text-[#A1A1AA]">{f.label}</label>
-                <input className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" type={f.type} placeholder={f.placeholder} />
+                <input className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" type={f.type} placeholder={f.placeholder} value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} />
               </div>
             ))}
             <div className="col-span-2 flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-[#A1A1AA]">Host Facility *</label>
-              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500">
+              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.host_facility_id} onChange={e => setForm(prev => ({ ...prev, host_facility_id: e.target.value }))}>
                 <option value="">Select facility…</option>
+                {hosts.map((h: any) => (
+                  <option key={h.id} value={h.id}>{h.facility_name}</option>
+                ))}
               </select>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-8">
-            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose}>Cancel</button>
-            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => { alert('Supervisor added!'); onClose(); }}>
-              <Plus size={16} className="mr-2" /> Add Supervisor
+            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
+            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              <Plus size={16} className="mr-2" /> {mutation.isPending ? 'Adding...' : 'Add Supervisor'}
             </button>
           </div>
         </div>

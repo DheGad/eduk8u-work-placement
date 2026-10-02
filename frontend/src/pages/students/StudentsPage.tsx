@@ -10,9 +10,25 @@ const riskBadge: Record<string, string> = { none: 'bg-[#111111] text-[#A1A1AA] b
 const riskLabel: Record<string, string> = { none: 'Clear', low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
 const statusBadge: Record<string, string> = { active: 'bg-blue-500/10 text-blue-400 border-blue-500/20', completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', not_started: 'bg-[#111111] text-[#A1A1AA] border-[#222222]' };
 
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { createStudent } from '@/api/endpoints/students';
+
 // Create Student Modal
 const CreateStudentModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', dob: '', address: '', emergency_contact: '', emergency_phone: '' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', dob: '', address: '', emergency_contact_name: '', emergency_contact_phone: '', course_code: 'CHC33021' });
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => createStudent(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      setForm({ first_name: '', last_name: '', email: '', phone: '', dob: '', address: '', emergency_contact_name: '', emergency_contact_phone: '', course_code: 'CHC33021' });
+      onClose();
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.error || 'Failed to enrol student');
+    }
+  });
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -30,8 +46,8 @@ const CreateStudentModal = ({ open, onClose }: { open: boolean; onClose: () => v
               { key: 'phone', label: 'Mobile Phone *', type: 'tel', placeholder: '04XX XXX XXX' },
               { key: 'dob', label: 'Date of Birth', type: 'date', placeholder: '' },
               { key: 'address', label: 'Home Address', type: 'text', placeholder: 'Street, Suburb, State, Postcode' },
-              { key: 'emergency_contact', label: 'Emergency Contact Name', type: 'text', placeholder: 'Full name' },
-              { key: 'emergency_phone', label: 'Emergency Contact Phone', type: 'tel', placeholder: '04XX XXX XXX' },
+              { key: 'emergency_contact_name', label: 'Emergency Contact Name', type: 'text', placeholder: 'Full name' },
+              { key: 'emergency_contact_phone', label: 'Emergency Contact Phone', type: 'tel', placeholder: '04XX XXX XXX' },
             ].map(f => (
               <div key={f.key} className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-medium text-[#A1A1AA]">{f.label}</label>
@@ -40,15 +56,15 @@ const CreateStudentModal = ({ open, onClose }: { open: boolean; onClose: () => v
             ))}
             <div className="col-span-2 flex flex-col gap-1.5 mt-2">
               <label className="text-[12px] font-medium text-[#A1A1AA]">Course *</label>
-              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500">
-                <option>CHC33021 Certificate III in Individual Support</option>
+              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.course_code} onChange={e => setForm(prev => ({ ...prev, course_code: e.target.value }))}>
+                <option value="CHC33021">CHC33021 Certificate III in Individual Support</option>
               </select>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-8">
-            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose}>Cancel</button>
-            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => { alert('Student enrolled!'); onClose(); }}>
-              <Plus size={16} className="mr-2" /> Enrol Student
+            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
+            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              <Plus size={16} className="mr-2" /> {mutation.isPending ? 'Enrolling...' : 'Enrol Student'}
             </button>
           </div>
         </div>

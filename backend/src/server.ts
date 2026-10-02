@@ -482,7 +482,7 @@ app.get('/api/v1/students', authMiddleware, async (req, res) => {
   return ok(res, students, { total: students.length });
 });
 
-app.post('/api/v1/students', authMiddleware, async (req, res) => {
+app.post('/api/v1/students', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   const { first_name, last_name, email, phone, dob, address, emergency_contact_name, emergency_contact_phone, course_code } = req.body;
   if (!first_name || !last_name || !email) return err(res, 400, 'first_name, last_name, email required');
   const existing = (await db.query('SELECT id FROM students WHERE email=$1 AND tenant_id=$2', [email, (req as any).user.tenantId])).rows[0];
@@ -490,7 +490,7 @@ app.post('/api/v1/students', authMiddleware, async (req, res) => {
   const id = uuidv4();
   const count = ((await db.query('SELECT COUNT(*) as c FROM students WHERE tenant_id=$1', [(req as any).user.tenantId])).rows[0] as any).c;
   const sn = `STU-${String(count + 1).padStart(3, '0')}`;
-  await db.query(`INSERT INTO students (id,tenant_id,user_id,student_number,first_name,last_name,email,phone,dob,address,emergency_contact_name,emergency_contact_phone,course_code,course_name,enrolment_status,enrolment_date,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,CURRENT_DATE,$16,$17)`, [id, (req as any).user.tenantId, null, sn, first_name, last_name, email, phone||null, dob||null, address||null, emergency_contact_name||null, emergency_contact_phone||null, course_code||'CHC33021', 'Certificate III in Individual Support', 'active', 1, (req as any).user.userId]);
+  await db.query(`INSERT INTO students (id,tenant_id,user_id,student_number,first_name,last_name,email,phone,dob,address,emergency_contact_name,emergency_contact_phone,course_code,course_name,enrolment_status,enrolment_date,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,CURRENT_DATE,$16,$17)`, [id, (req as any).user.tenantId, null, sn, first_name, last_name, email, phone||null, dob||null, address||null, emergency_contact_name||null, emergency_contact_phone||null, course_code||'CHC33021', 'Certificate III in Individual Support', 'active', true, (req as any).user.userId]);
   logActivity(req as any, 'created', 'student', id, `Student ${first_name} ${last_name} enrolled`, (req as any).user.userId);
   return res.status(201).json({ success: true, data: (await db.query('SELECT * FROM students WHERE id=$1', [id])).rows[0] });
 });
@@ -516,11 +516,11 @@ app.get('/api/v1/hosts', authMiddleware, async (req, res) => {
   return ok(res, (await db.query(sql, [...params])).rows);
 });
 
-app.post('/api/v1/hosts', authMiddleware, async (req, res) => {
+app.post('/api/v1/hosts', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   const { facility_name, abn, facility_type, address_line1, suburb, state, postcode, phone, email, primary_contact_name, primary_contact_role, student_capacity } = req.body;
   if (!facility_name || !suburb || !state) return err(res, 400, 'facility_name, suburb, state required');
   const id = uuidv4();
-  await db.query(`INSERT INTO host_facilities (id,tenant_id,facility_name,trading_name,abn,facility_type,address_line1,suburb,state,postcode,country,phone,email,primary_contact_name,primary_contact_role,student_capacity,approval_status,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',1,$17)`, [id, (req as any).user.tenantId, facility_name, facility_name, abn||null, facility_type||'Residential Aged Care', address_line1||null, suburb, state, postcode||null, 'Australia', phone||null, email||null, primary_contact_name||null, primary_contact_role||null, student_capacity||3, (req as any).user.userId]);
+  await db.query(`INSERT INTO host_facilities (id,tenant_id,facility_name,trading_name,abn,facility_type,address_line1,suburb,state,postcode,country,phone,email,primary_contact_name,primary_contact_role,student_capacity,approval_status,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',true,$17)`, [id, (req as any).user.tenantId, facility_name, facility_name, abn||null, facility_type||'Residential Aged Care', address_line1||null, suburb, state, postcode||null, 'Australia', phone||null, email||null, primary_contact_name||null, primary_contact_role||null, student_capacity||3, (req as any).user.userId]);
   logActivity(req as any, 'created', 'host_facility', id, `Host facility ${facility_name} added`, (req as any).user.userId);
   return res.status(201).json({ success: true, data: (await db.query('SELECT * FROM host_facilities WHERE id=$1', [id])).rows[0] });
 });
@@ -553,11 +553,11 @@ app.get('/api/v1/supervisors', authMiddleware, async (req, res) => {
   return ok(res, (await db.query(sql, [...params])).rows);
 });
 
-app.post('/api/v1/supervisors', authMiddleware, async (req, res) => {
+app.post('/api/v1/supervisors', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   const { host_facility_id, first_name, last_name, email, phone, position_title, years_experience } = req.body;
   if (!host_facility_id || !first_name || !last_name || !email) return err(res, 400, 'host_facility_id, first_name, last_name, email required');
   const id = uuidv4();
-  await db.query(`INSERT INTO supervisors (id,tenant_id,host_facility_id,first_name,last_name,email,phone,position_title,qualification_status,briefing_status,years_experience,qualifications,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending_verification','not_started',$9,$10,1,$11)`, [id, (req as any).user.tenantId, host_facility_id, first_name, last_name, email, phone||null, position_title||null, years_experience||null, '[]', (req as any).user.userId]);
+  await db.query(`INSERT INTO supervisors (id,tenant_id,host_facility_id,first_name,last_name,email,phone,position_title,qualification_status,briefing_status,years_experience,qualifications,is_active,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending_verification','not_started',$9,$10,true,$11)`, [id, (req as any).user.tenantId, host_facility_id, first_name, last_name, email, phone||null, position_title||null, years_experience||null, '[]', (req as any).user.userId]);
   logActivity(req as any, 'created', 'supervisor', id, `Supervisor ${first_name} ${last_name} added`, (req as any).user.userId);
   return res.status(201).json({ success: true, data: (await db.query('SELECT * FROM supervisors WHERE id=$1', [id])).rows[0] });
 });
@@ -609,7 +609,7 @@ app.get('/api/v1/placements', authMiddleware, async (req, res) => {
   return ok(res, placements, { total: placements.length });
 });
 
-app.post('/api/v1/placements', authMiddleware, async (req, res) => {
+app.post('/api/v1/placements', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {
   const { student_id, host_facility_id, supervisor_id, start_date, end_date, course_code } = req.body;
   if (!student_id || !host_facility_id || !supervisor_id) return err(res, 400, 'student_id, host_facility_id, supervisor_id required');
   const host = (await db.query('SELECT * FROM host_facilities WHERE id=$1 AND tenant_id=$2', [host_facility_id, (req as any).user.tenantId])).rows[0] as any;

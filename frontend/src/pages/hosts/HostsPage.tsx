@@ -13,8 +13,24 @@ const approvalConfig: Record<string, { cls: string; label: string }> = {
   suspended: { cls: 'bg-red-500/10 text-red-400 border-red-500/20', label: 'Suspended' },
 };
 
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { createHost } from '@/api/endpoints/hosts';
+
 const CreateHostModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
-  const [form, setForm] = useState({ facility_name: '', abn: '', facility_type: 'Residential Aged Care', suburb: '', state: 'QLD', postcode: '', phone: '', email: '', contact_name: '', contact_role: '' });
+  const [form, setForm] = useState({ facility_name: '', abn: '', facility_type: 'Residential Aged Care', suburb: '', state: 'QLD', postcode: '', phone: '', email: '', primary_contact_name: '', primary_contact_role: '' });
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => createHost(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hosts'] });
+      setForm({ facility_name: '', abn: '', facility_type: 'Residential Aged Care', suburb: '', state: 'QLD', postcode: '', phone: '', email: '', primary_contact_name: '', primary_contact_role: '' });
+      onClose();
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.error || 'Failed to add host facility');
+    }
+  });
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -34,8 +50,8 @@ const CreateHostModal = ({ open, onClose }: { open: boolean; onClose: () => void
               { key: 'suburb', label: 'Suburb *', type: 'text', placeholder: 'e.g. Indooroopilly' },
               { key: 'phone', label: 'Phone', type: 'tel', placeholder: '0X XXXX XXXX' },
               { key: 'email', label: 'Email', type: 'email', placeholder: 'hello@host.com.au' },
-              { key: 'contact_name', label: 'Primary Contact Name *', type: 'text', placeholder: 'Full name' },
-              { key: 'contact_role', label: 'Contact Role', type: 'text', placeholder: 'e.g. Facility Manager' }
+              { key: 'primary_contact_name', label: 'Primary Contact Name *', type: 'text', placeholder: 'Full name' },
+              { key: 'primary_contact_role', label: 'Contact Role', type: 'text', placeholder: 'e.g. Facility Manager' }
             ].map(f => (
               <div key={f.key} className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-medium text-[#A1A1AA]">{f.label}</label>
@@ -44,9 +60,9 @@ const CreateHostModal = ({ open, onClose }: { open: boolean; onClose: () => void
             ))}
           </div>
           <div className="flex justify-end gap-3 mt-8">
-            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose}>Cancel</button>
-            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => { alert('Host facility added!'); onClose(); }}>
-              <Plus size={16} className="mr-2" /> Add Host Facility
+            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
+            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              <Plus size={16} className="mr-2" /> {mutation.isPending ? 'Adding...' : 'Add Host Facility'}
             </button>
           </div>
         </div>

@@ -22,8 +22,37 @@ const phaseConfig: Record<string, { cls: string }> = {
   completed: { cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
 };
 
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { createPlacement } from '@/api/endpoints/placements';
+import { listStudents } from '@/api/endpoints/students';
+import { listHosts } from '@/api/endpoints/hosts';
+import { listSupervisors } from '@/api/endpoints/supervisors';
+
 const CreatePlacementModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
-  const [form, setForm] = useState({ student_id: '', host_id: '', supervisor_id: '', start_date: '', end_date: '', workflow_id: '' });
+  const [form, setForm] = useState({ student_id: '', host_facility_id: '', supervisor_id: '', start_date: '', end_date: '', course_code: 'CHC33021' });
+  const queryClient = useQueryClient();
+
+  const { data: stdData } = useQuery({ queryKey: ['students'], queryFn: () => listStudents({ search: '' }) });
+  const students = Array.isArray(stdData) ? stdData : (stdData?.data || []);
+
+  const { data: hostData } = useQuery({ queryKey: ['hosts'], queryFn: () => listHosts({ search: '' }) });
+  const hosts = Array.isArray(hostData) ? hostData : (hostData?.data || []);
+
+  const { data: supData } = useQuery({ queryKey: ['supervisors'], queryFn: () => listSupervisors({ search: '' }) });
+  const supervisors = Array.isArray(supData) ? supData : (supData?.data || []);
+
+  const mutation = useMutation({
+    mutationFn: () => createPlacement(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['placements'] });
+      setForm({ student_id: '', host_facility_id: '', supervisor_id: '', start_date: '', end_date: '', course_code: 'CHC33021' });
+      onClose();
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.error || 'Failed to create placement');
+    }
+  });
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -38,24 +67,27 @@ const CreatePlacementModal = ({ open, onClose }: { open: boolean; onClose: () =>
               <label className="text-[12px] font-medium text-[#A1A1AA]">Student *</label>
               <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}>
                 <option value="">Select student…</option>
+                {students.map((s: any) => <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-[#A1A1AA]">Host Facility *</label>
-              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.host_id} onChange={e => setForm(f => ({ ...f, host_id: e.target.value }))}>
+              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.host_facility_id} onChange={e => setForm(f => ({ ...f, host_facility_id: e.target.value }))}>
                 <option value="">Select host…</option>
+                {hosts.map((h: any) => <option key={h.id} value={h.id}>{h.facility_name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-[#A1A1AA]">Supervisor *</label>
               <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.supervisor_id} onChange={e => setForm(f => ({ ...f, supervisor_id: e.target.value }))}>
                 <option value="">Select supervisor…</option>
+                {supervisors.map((s: any) => <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-[#A1A1AA]">Course / Workflow</label>
-              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.workflow_id} onChange={e => setForm(f => ({ ...f, workflow_id: e.target.value }))}>
-                <option value="">CHC33021 Certificate III Individual Support</option>
+              <select className="h-9 px-3 rounded-md border border-[#333333] bg-[#0F0F0F] text-[13px] text-white focus:outline-none focus:border-blue-500" value={form.course_code} onChange={e => setForm(f => ({ ...f, course_code: e.target.value }))}>
+                <option value="CHC33021">CHC33021 Certificate III Individual Support</option>
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -71,9 +103,9 @@ const CreatePlacementModal = ({ open, onClose }: { open: boolean; onClose: () =>
             <strong className="text-blue-400 font-semibold mr-1">Note:</strong> Creating this placement will trigger the CA 0355 Tripartite Agreement workflow. All three parties (Student, Host, RTO) must sign before hours can be logged.
           </div>
           <div className="flex justify-end gap-3 mt-8">
-            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose}>Cancel</button>
-            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => { alert('Placement created!'); onClose(); }}>
-              <Plus size={16} className="mr-2" /> Create Placement
+            <button className="h-9 px-4 rounded-md border border-[#333333] hover:bg-[#1A1A1A] text-white text-[13px] font-medium transition-colors" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
+            <button className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              <Plus size={16} className="mr-2" /> {mutation.isPending ? 'Creating...' : 'Create Placement'}
             </button>
           </div>
         </div>
@@ -208,9 +240,9 @@ export const PlacementsPage: React.FC = () => {
           <p className="text-[#A1A1AA] text-[13px] mt-1">{placements.length} placement{placements.length !== 1 ? 's' : ''} found</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/placements/wizard" className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+          <button onClick={() => setShowCreate(true)} className="h-9 px-4 rounded-md bg-white text-black hover:bg-gray-100 text-[13px] font-semibold transition-colors flex items-center shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]">
             <Plus size={16} className="mr-2" /> Create Placement
-          </Link>
+          </button>
         </div>
       </div>
 

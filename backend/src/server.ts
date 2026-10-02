@@ -1334,6 +1334,67 @@ app.post('/api/v1/placements/:id/monitoring', authMiddleware, async (req, res) =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TASKS
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/v1/tasks/my-tasks', authMiddleware, async (req, res) => {
+  const user = (req as any).user;
+  const tasks = (await db.query(`
+    SELECT id, title, description, status, due_date as due
+    FROM placement_tasks
+    WHERE assigned_to = $1 AND tenant_id = $2 AND status != 'completed'
+    ORDER BY due_date ASC
+  `, [user.id, user.tenantId])).rows;
+  return ok(res, { tasks });
+});
+
+app.get('/api/v1/placements/:id/tasks', authMiddleware, async (req, res) => {
+  const p = (await db.query('SELECT id FROM placements WHERE id=$1 AND tenant_id=$2', [req.params.id, (req as any).user.tenantId])).rows[0];
+  if (!p) return err(res, 404, 'Placement not found');
+
+  const tasks = (await db.query(`
+    SELECT * FROM placement_tasks WHERE placement_id = $1 ORDER BY created_at DESC
+  `, [req.params.id])).rows;
+  
+  return ok(res, { data: tasks });
+});
+
+app.post('/api/v1/placements/:id/tasks', authMiddleware, async (req, res) => {
+  const p = (await db.query('SELECT id FROM placements WHERE id=$1 AND tenant_id=$2', [req.params.id, (req as any).user.tenantId])).rows[0];
+  if (!p) return err(res, 404, 'Placement not found');
+  
+  const { title, description, due_date, assigned_to } = req.body;
+  if (!title) return err(res, 400, 'title is required');
+
+  const id = uuidv4();
+  await db.query(`
+    INSERT INTO placement_tasks (id, tenant_id, placement_id, title, description, due_date, assigned_to, created_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [id, (req as any).user.tenantId, req.params.id, title, description, due_date || null, assigned_to || null, (req as any).user.id]);
+  
+  return ok(res, { id, title });
+});
+
+app.patch('/api/v1/tasks/:id', authMiddleware, async (req, res) => {
+  const t = (await db.query('SELECT * FROM placement_tasks WHERE id=$1 AND tenant_id=$2', [req.params.id, (req as any).user.tenantId])).rows[0];
+  if (!t) return err(res, 404, 'Task not found');
+  
+  const { status, review_notes } = req.body;
+  const updates = [];
+  const values = [];
+  let idx = 1;
+  if (status !== undefined) { updates.push(`status=$${idx++}`); values.push(status); }
+  if (review_notes !== undefined) { updates.push(`review_notes=$${idx++}`); values.push(review_notes); }
+  if (status === 'completed' && t.status !== 'completed') { updates.push(`completed_at=NOW()`); }
+  if (status === 'reviewed' && t.status !== 'reviewed') { updates.push(`reviewed_at=NOW()`); }
+  
+  if (updates.length > 0) {
+    values.push(req.params.id, (req as any).user.tenantId);
+    await db.query(`UPDATE placement_tasks SET ${updates.join(', ')} WHERE id=$${idx++} AND tenant_id=$${idx}`, values);
+  }
+  return ok(res, { success: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // REPORTING
 // ─────────────────────────────────────────────────────────────────────────────
 app.get('/api/v1/reports/campus-risk', authMiddleware, requireRole(['super_admin', 'college_admin', 'trainer']), async (req, res) => {

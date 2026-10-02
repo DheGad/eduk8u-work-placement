@@ -59,12 +59,34 @@ const docStatusConfig: Record<string, { cls: string; label: string }> = {
 };
 
 // --- Log Hours Modal ---
-const LogHoursModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+const LogHoursModal = ({ open, onClose, placementId }: { open: boolean; onClose: () => void; placementId: string }) => {
   const [form, setForm] = useState({ date: '', time_in: '', time_out: '', activities: '', learning_outcomes: '' });
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (data: any) => logHours(placementId, data),
+    onSuccess: () => {
+      toast.success('Hours logged successfully');
+      queryClient.invalidateQueries({ queryKey: ['placement', placementId] });
+      onClose();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Failed to log hours');
+    }
+  });
+
   if (!open) return null;
   const hrs = form.time_in && form.time_out
     ? Math.max(0, ((new Date(`2000-01-01T${form.time_out}`) as any) - (new Date(`2000-01-01T${form.time_in}`) as any)) / 3600000)
     : 0;
+
+  const handleSubmit = () => {
+    if (!form.date || !form.time_in || !form.time_out || !form.activities) {
+      return toast.error('Please fill in all required fields');
+    }
+    mutation.mutate({ log_date: form.date, time_in: form.time_in, time_out: form.time_out, hours_claimed: hrs, activities: 'General', activities_description: form.activities, learning_outcomes: form.learning_outcomes });
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-md" onClick={e => e.stopPropagation()}>
@@ -103,8 +125,8 @@ const LogHoursModal = ({ open, onClose }: { open: boolean; onClose: () => void }
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
             <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={() => { alert(`${hrs.toFixed(1)} hours logged for ${form.date}. Awaiting supervisor approval.`); onClose(); }}>
-              <Plus size={16} /> Submit Hours
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={mutation.isPending}>
+              <Plus size={16} /> {mutation.isPending ? 'Submitting...' : 'Submit Hours'}
             </button>
           </div>
         </div>
@@ -113,14 +135,15 @@ const LogHoursModal = ({ open, onClose }: { open: boolean; onClose: () => void }
   );
 };
 
-import { useQuery } from '@tanstack/react-query';
-import { getPlacement, getPlacementHours, getPlacementEvidence } from '@/api/endpoints/placements';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { getPlacement, getPlacementHours, getPlacementEvidence, logHours } from "@/api/endpoints/placements";
 import apiClient from '@/api/client';
 
 export const PlacementDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'hours' | 'documents' | 'compliance' | 'monitoring'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'hours' | 'documents' | 'compliance' | 'monitoring' | 'tasks'>('overview');
   const [showLogHours, setShowLogHours] = useState(false);
   
   const { data: placement, isLoading: pLoading } = useQuery({
@@ -178,6 +201,7 @@ export const PlacementDetail: React.FC = () => {
     { key: 'hours', label: `Hours (${p.hours_completed}/${p.hours_required})` },
     { key: 'documents', label: 'Documents' },
     { key: 'monitoring', label: 'Monitoring' },
+    { key: 'tasks', label: 'Tasks' },
     { key: 'compliance', label: 'Compliance' },
   ];
 
@@ -186,7 +210,7 @@ export const PlacementDetail: React.FC = () => {
 
   return (
     <div className="page-content">
-      <LogHoursModal open={showLogHours} onClose={() => setShowLogHours(false)} />
+      <LogHoursModal open={showLogHours} onClose={() => setShowLogHours(false)} placementId={id!} />
 
       {/* Back */}
       <button className="btn btn-ghost btn-sm" style={{ marginBottom: '1rem' }} onClick={() => navigate('/placements')}>
@@ -500,6 +524,80 @@ export const PlacementDetail: React.FC = () => {
       {activeTab === 'monitoring' && (
         <MonitoringTab placementId={id!} />
       )}
+
+      {/* Tab: Tasks */}
+      {activeTab === 'tasks' && (
+        <TasksTab placementId={id!} />
+      )}
+    </div>
+  );
+};
+
+const TasksTab = ({ placementId }: { placementId: string }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', due_date: '' });
+  const queryClient = useQueryClient();
+
+  const { data: tasks = [], isLoading, refetch } = useQuery({
+    queryKey: ['placement', placementId, 'tasks'],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/placements/${placementId}/tasks`);
+      return data.data || data;
+    }
+  });
+
+  const submitTask = async () => {
+    if (!form.title) return alert('Title is required');
+    await apiClient.post(`/placements/${placementId}/tasks`, form);
+    setShowModal(false);
+    setForm({ title: '', description: '', due_date: '' });
+    refetch();
+  };
+
+  const completeTask = async (taskId: string) => {
+    await apiClient.patch(`/tasks/${taskId}`, { status: 'completed' });
+    refetch();
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <Plus size={16} /> Create Task
+        </button>
+      </div>
+
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Create Task</h2>
+            </div>
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <input className="input" placeholder="Title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+              <textarea className="textarea" placeholder="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              <input className="input" type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
+              <button className="btn btn-primary mt-4" onClick={submitTask}>Submit</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <table className="table">
+          <thead><tr><th>Title</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>
+            {tasks.map((t: any) => (
+              <tr key={t.id}>
+                <td>{t.title}</td>
+                <td>{t.due_date ? new Date(t.due_date).toLocaleDateString() : '-'}</td>
+                <td><span className={`badge ${t.status === 'completed' ? 'badge-success' : 'badge-warning'}`}>{t.status}</span></td>
+                <td>{t.status !== 'completed' && <button className="btn btn-sm btn-ghost" onClick={() => completeTask(t.id)}>Complete</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
